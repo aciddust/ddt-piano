@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Doki Doki Town Piano ${{ github.ref_name }}'
+          releaseBody: |
+            ## 다운로드
+            
+            ### Windows
+            - `ddt-piano_${{ github.ref_name }}_x64-setup.exe` - 64비트 설치 프로그램
+            - `ddt-piano_${{ github.ref_name }}_x64.msi` - 64비트 MSI 설치 프로그램
+            
+            ### 변경사항
+            ${{ github.event.head_commit.message }}
+          releaseDraft: false
+          prerelease: false
