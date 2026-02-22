@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "ddt-piano"
-version = "1.0.11"
+version = "1.1.0"
 dependencies = [
  "log",
  "midly",
