@@ -2,6 +2,8 @@
 
 > 두근두근타운 피아노 입력기
 
+<img src="docs/image/video.gif" />
+
 3옥타브 대역의 러프한 미디트랙 어레인지와 키보드 자동입력을 위해 시작되었습니다.
 
 ## 개발 가이드
@@ -70,4 +72,4 @@ ddt-piano
 
 ## 배포 가이드
 
-github action 으로 release 합니다.
+태그 생성시 github action 으로 release 생성합니다.
