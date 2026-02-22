@@ -4,6 +4,8 @@
 
 <img src="docs/image/video.gif" />
 
+<img src="docs/image/usage.gif" />
+
 3옥타브 대역의 러프한 미디트랙 어레인지와 키보드 자동입력을 위해 시작되었습니다.
 
 ## 개발 가이드

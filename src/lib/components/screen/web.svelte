@@ -88,7 +88,7 @@
 				> -->
 				<a href={APP_INFO.downloadLink}>
 					<button
-						class="bg-web hover:bg-web-dark focus:ring-web inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium text-black transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-offset-darkbg focus:outline-none"
+						class="inline-flex cursor-pointer items-center justify-center rounded-md bg-web px-3 py-1.5 text-sm font-medium text-black transition-colors duration-200 hover:bg-web-dark focus:ring-2 focus:ring-web focus:ring-offset-2 focus:ring-offset-darkbg focus:outline-none"
 					>
 						다운로드
 					</button>
@@ -153,7 +153,7 @@
 				<a href={APP_INFO.githubLink} class="py-2 text-gray-300 hover:text-white">GitHub</a>
 				<a href={APP_INFO.downloadLink} class="w-full">
 					<button
-						class="bg-web hover:bg-web-dark focus:ring-web inline-flex w-full items-center justify-center rounded-lg px-5 py-2.5 text-base font-medium text-black transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-offset-darkbg focus:outline-none"
+						class="inline-flex w-full items-center justify-center rounded-lg bg-web px-5 py-2.5 text-base font-medium text-black transition-colors duration-200 hover:bg-web-dark focus:ring-2 focus:ring-web focus:ring-offset-2 focus:ring-offset-darkbg focus:outline-none"
 					>
 						다운로드
 					</button>

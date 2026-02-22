@@ -69,10 +69,14 @@
 				<div class="overflow-hidden rounded-lg border border-gray-800">
 					<!-- MIDI_SOURCES 의 내용을 참조해서 -->
 					{#each MIDI_SOURCES as source}
-						<a href={source.url} target="_blank" class="flex items-center justify-between gap-4 p-4 hover:bg-gray-800/30 transition-colors">
+						<a
+							href={source.url}
+							target="_blank"
+							class="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-gray-800/30"
+						>
 							<div class="flex-1">
-								<div class="text-gray-400 hover:text-white font-medium">{source.name}</div>
-								<div class="text-xs text-gray-500 mt-1">{source.description}</div>
+								<div class="font-medium text-gray-400 hover:text-white">{source.name}</div>
+								<div class="mt-1 text-xs text-gray-500">{source.description}</div>
 							</div>
 							<SquareArrowOutUpRight class="h-4 w-4 flex-shrink-0 text-gray-400" />
 						</a>
@@ -106,10 +110,12 @@
 						MIDI 악보가 준비되었다면, 프로그램에서 해당 파일을 불러옵니다.
 					</p>
 					<p class="mb-4 break-keep text-gray-400">
-						편곡기능 사용시 1개의 피아노 트랙으로 병합되며, 튜닝은 기본적으로 두두타 피아노에 맞춰져 있습니다.
+						편곡기능 사용시 1개의 피아노 트랙으로 병합되며, 튜닝은 기본적으로 두두타 피아노에 맞춰져
+						있습니다.
 					</p>
 					<p class="mb-6 break-keep text-gray-400">
-						대부분의 경우는 3옥타브 편곡과 자동조정으로 나쁘지않은 연주경험을 얻을 수 있지만 필요한경우 수동으로 조정할 수 있습니다.
+						대부분의 경우는 3옥타브 편곡과 자동조정으로 나쁘지않은 연주경험을 얻을 수 있지만
+						필요한경우 수동으로 조정할 수 있습니다.
 					</p>
 				</div>
 
@@ -130,7 +136,9 @@
 					</div>
 					<h3 class="mb-3 text-2xl font-bold text-white">수동 조정은 어떻게하나요?</h3>
 					<p class="mx-auto max-w-2xl break-keep text-gray-400">
-						<a href="https://signalmidi.app/edit" target="_blank" class="text-ddt underline">Signal</a>&nbsp;같은 온라인 에디터를 사용해도 괜찮습니다.
+						<a href="https://signalmidi.app/edit" target="_blank" class="text-ddt underline"
+							>Signal</a
+						>&nbsp;같은 온라인 에디터를 사용해도 괜찮습니다.
 					</p>
 				</div>
 			</div>

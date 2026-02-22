@@ -11,7 +11,7 @@ const config = {
 			fallback: 'index.html'
 		}),
 		paths: {
-			base: ''
+			base: process.env.GITHUB_PAGES ? '/ddt-piano' : ''
 		},
 		alias: {
 			'@/*': 'src/lib/*'
