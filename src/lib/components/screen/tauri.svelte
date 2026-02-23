@@ -7,6 +7,7 @@
 	import { toast } from 'svelte-sonner';
 	import type { Score, KeyMaps, ProcessInfo, ScoreNote } from '@/interface';
 	import { invoke } from '@tauri-apps/api/core';
+	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { save } from '@tauri-apps/plugin-dialog';
 	import { writeFile } from '@tauri-apps/plugin-fs';
 
@@ -15,6 +16,7 @@
 
 	let currentInstrument = 'heartopia';
 	let isPlaying = false;
+	let isPaused = false;
 	let currentScore: Score | null = null;
 	let adjustedScore: Score | null = null; // pitch/octave 적용된 악보
 	let currentMidiFile: { data: Uint8Array; name: string } | null = null;
@@ -26,6 +28,8 @@
 	let clipStats: { total: number; clipped: number } | null = null;
 	let recommendedShift: { shift: number; clipped: number; total: number } | null = null;
 	let isArranged = false; // 3옥타브 편곡 적용 여부
+	let playbackState: { events: TimelineEvent[]; elapsed: number } | null = null;
+	let playbackClock: { startAt: number; offset: number } | null = null;
 
 	let keyMaps: KeyMaps = {
 		heartopia: {
@@ -71,6 +75,12 @@
 
 	let tauriReady = false;
 
+	interface TimelineEvent {
+		time: number;
+		keysToPress: string[];
+		keysToRelease: string[];
+	}
+
 	// 초기 로드 시 xdt.exe 감지
 	onMount(() => {
 		const hasTauri =
@@ -82,6 +92,27 @@
 			console.warn('Tauri environment not detected');
 		}
 		detectXdtProcess();
+
+		let unlisten: UnlistenFn | null = null;
+		if (hasTauri) {
+			(async () => {
+				unlisten = await listen<string>('global-shortcut', async (event) => {
+					if (event.payload === 'toggle-play') {
+						await togglePlayPause();
+						return;
+					}
+					if (event.payload === 'stop') {
+						await stopMacro();
+					}
+				});
+			})();
+		}
+
+		return () => {
+			if (unlisten) {
+				unlisten();
+			}
+		};
 	});
 
 	// xdt.exe 프로세스 자동 감지 (heartopia 전용)
@@ -126,9 +157,57 @@
 		await new Promise((resolve) => setTimeout(resolve, 500));
 	}
 
-	// 매크로 실행 (절대 시간 기반)
-	async function playMacro() {
-		// adjustedScore 사용 (이미 pitch/octave 적용됨)
+	function buildTimeline(scoreToPlay: Score): TimelineEvent[] {
+		const events: TimelineEvent[] = [];
+		const instrumentMap = keyMaps[currentInstrument];
+
+		for (const note of scoreToPlay.notes) {
+			if (note.rest) continue;
+			if (!note.keys || note.keys.length === 0) continue;
+
+			const keysToPress = note.keys
+				.map((k) => instrumentMap[k])
+				.filter((k): k is string => k !== undefined);
+
+			if (keysToPress.length === 0) continue;
+
+			let startEvent = events.find((e) => e.time === note.startTime);
+			if (!startEvent) {
+				startEvent = { time: note.startTime, keysToPress: [], keysToRelease: [] };
+				events.push(startEvent);
+			}
+			startEvent.keysToPress.push(...keysToPress);
+
+			let endEvent = events.find((e) => e.time === note.endTime);
+			if (!endEvent) {
+				endEvent = { time: note.endTime, keysToPress: [], keysToRelease: [] };
+				events.push(endEvent);
+			}
+			endEvent.keysToRelease.push(...keysToPress);
+		}
+
+		events.sort((a, b) => a.time - b.time);
+		return events;
+	}
+
+	function getAllKeys(scoreToPlay: Score): string[] {
+		const instrumentMap = keyMaps[currentInstrument];
+		const allKeys = scoreToPlay.notes
+			.filter((n) => !n.rest && n.keys)
+			.flatMap((n) =>
+				(n.keys || []).map((k) => instrumentMap[k]).filter((k): k is string => k !== undefined)
+			);
+		return [...new Set(allKeys)];
+	}
+
+	async function releaseAllKeys(scoreToPlay: Score) {
+		const uniqueKeys = getAllKeys(scoreToPlay);
+		if (uniqueKeys.length > 0) {
+			await invoke('key_up', { keys: uniqueKeys });
+		}
+	}
+
+	async function startPlayback(fromElapsed = 0) {
 		const scoreToPlay = adjustedScore || currentScore;
 
 		if (!scoreToPlay) {
@@ -140,68 +219,51 @@
 			return;
 		}
 
+		if (!playbackState) {
+			const events = buildTimeline(scoreToPlay);
+			if (events.length === 0) {
+				toast.error('연주할 노트가 없습니다');
+				return;
+			}
+			playbackState = { events, elapsed: 0 };
+		}
+
 		isPlaying = true;
+		isPaused = false;
+
 		try {
 			await focusSelectedProcess();
 
-			// 타임라인 이벤트 생성
-			interface TimelineEvent {
-				time: number;
-				keysToPress: string[];
-				keysToRelease: string[];
+			const events = playbackState.events;
+			let lastTime = fromElapsed;
+			let startIndex = 0;
+			while (startIndex < events.length && events[startIndex].time < fromElapsed) {
+				startIndex++;
 			}
 
-			const events: TimelineEvent[] = [];
-			const instrumentMap = keyMaps[currentInstrument];
-
-			for (const note of scoreToPlay.notes) {
-				if (note.rest) continue;
-				if (!note.keys || note.keys.length === 0) continue;
-
-				// 이미 조정된 키들을 keyMap에서 찾기 (추가 변환 없음)
-				const keysToPress = note.keys
-					.map((k) => instrumentMap[k])
-					.filter((k): k is string => k !== undefined);
-
-				if (keysToPress.length === 0) continue;
-
-				// startTime에 누르기 이벤트 추가
-				let startEvent = events.find((e) => e.time === note.startTime);
-				if (!startEvent) {
-					startEvent = { time: note.startTime, keysToPress: [], keysToRelease: [] };
-					events.push(startEvent);
+			playbackClock = { startAt: performance.now(), offset: fromElapsed };
+			let completed = true;
+			for (let i = startIndex; i < events.length; i++) {
+				if (!isPlaying) {
+					completed = false;
+					break;
 				}
-				startEvent.keysToPress.push(...keysToPress);
 
-				// endTime에 떼기 이벤트 추가
-				let endEvent = events.find((e) => e.time === note.endTime);
-				if (!endEvent) {
-					endEvent = { time: note.endTime, keysToPress: [], keysToRelease: [] };
-					events.push(endEvent);
-				}
-				endEvent.keysToRelease.push(...keysToPress);
-			}
-
-			// 시간순으로 정렬
-			events.sort((a, b) => a.time - b.time);
-
-			// 각 타임라인 이벤트를 실행
-			let lastTime = 0;
-			for (const event of events) {
-				if (!isPlaying) break;
-
-				// 대기
+				const event = events[i];
 				const waitTime = event.time - lastTime;
 				if (waitTime > 0) {
 					await new Promise((resolve) => setTimeout(resolve, waitTime));
 				}
 
-				// 키 떼기 (먼저 실행)
+				if (!isPlaying) {
+					completed = false;
+					break;
+				}
+
 				if (event.keysToRelease.length > 0) {
 					await invoke('key_up', { keys: event.keysToRelease });
 				}
 
-				// 키 누르기
 				if (event.keysToPress.length > 0) {
 					await invoke('key_down', { keys: event.keysToPress });
 				}
@@ -209,28 +271,79 @@
 				lastTime = event.time;
 			}
 
-			// 마지막에 모든 키 떼기
-			const allKeys = scoreToPlay.notes
-				.filter((n) => !n.rest && n.keys)
-				.flatMap((n) =>
-					(n.keys || []).map((k) => instrumentMap[k]).filter((k): k is string => k !== undefined)
-				);
-			const uniqueKeys = [...new Set(allKeys)];
-			if (uniqueKeys.length > 0) {
-				await invoke('key_up', { keys: uniqueKeys });
+			if (completed) {
+				await releaseAllKeys(scoreToPlay);
+				playbackState = null;
+				playbackClock = null;
+				toast.success('매크로 실행 완료');
+			} else if (isPaused && playbackClock) {
+				playbackState.elapsed = playbackClock.offset + (performance.now() - playbackClock.startAt);
+				playbackClock = null;
 			}
-
-			toast.success('매크로 실행 완료');
 		} catch (error) {
 			toast.error('매크로 실행 중 오류 발생');
 			console.error(error);
 		} finally {
-			isPlaying = false;
+			if (!isPaused) {
+				isPlaying = false;
+				playbackClock = null;
+			}
 		}
 	}
 
-	function stopMacro() {
+	async function playMacro() {
+		playbackState = null;
+		await startPlayback(0);
+	}
+
+	async function pauseMacro() {
+		if (!isPlaying) return;
+		isPaused = true;
 		isPlaying = false;
+		if (playbackState && playbackClock) {
+			playbackState.elapsed = playbackClock.offset + (performance.now() - playbackClock.startAt);
+			playbackClock = null;
+		}
+		const scoreToPlay = adjustedScore || currentScore;
+		if (scoreToPlay) {
+			await releaseAllKeys(scoreToPlay);
+		}
+		toast.info('매크로 일시정지');
+	}
+
+	async function resumeMacro() {
+		if (!playbackState) {
+			await playMacro();
+			return;
+		}
+		await startPlayback(playbackState.elapsed);
+	}
+
+	async function togglePlayPause() {
+		if (!currentScore) {
+			toast.error('악보를 먼저 로드하세요');
+			return;
+		}
+		if (isPlaying) {
+			await pauseMacro();
+			return;
+		}
+		if (isPaused) {
+			await resumeMacro();
+			return;
+		}
+		await playMacro();
+	}
+
+	async function stopMacro() {
+		const scoreToPlay = adjustedScore || currentScore;
+		isPlaying = false;
+		isPaused = false;
+		playbackState = null;
+		playbackClock = null;
+		if (scoreToPlay) {
+			await releaseAllKeys(scoreToPlay);
+		}
 		toast.info('매크로 중지');
 	}
 

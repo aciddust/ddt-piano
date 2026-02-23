@@ -6,6 +6,10 @@ mod arrange;
 use arrange::{apply_three_octave_arrangement, Score};
 use serde::Serialize;
 use sysinfo::System;
+use tauri::{Emitter, Manager};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
@@ -255,6 +259,61 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(|app| {
+            let show_item = MenuItem::new(app, "보이기", true, None::<&str>)?;
+            let hide_item = MenuItem::new(app, "숨기기", true, None::<&str>)?;
+            let quit_item = MenuItem::new(app, "종료", true, None::<&str>)?;
+            let tray_menu = Menu::new(app)?;
+            tray_menu.append_items(&[&show_item, &hide_item, &quit_item])?;
+
+            let show_id = show_item.id().clone();
+            let hide_id = hide_item.id().clone();
+            let quit_id = quit_item.id().clone();
+
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .on_menu_event(move |app, event| {
+                    if event.id == show_id {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    } else if event.id == hide_id {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    } else if event.id == quit_id {
+                        app.exit(0);
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            tray_builder.build(app)?;
+
+            use tauri_plugin_global_shortcut::ShortcutState;
+            println!("Registering global shortcuts: F2 (toggle), F4 (stop)");
+            app.handle().global_shortcut().on_shortcut("F2", |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    println!("Global shortcut: F2 pressed");
+                    let _ = app.emit("global-shortcut", "toggle-play");
+                }
+            })?;
+
+            app.handle().global_shortcut().on_shortcut("F4", |app, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    println!("Global shortcut: F4 pressed");
+                    let _ = app.emit("global-shortcut", "stop");
+                }
+            })?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             get_app_version,
